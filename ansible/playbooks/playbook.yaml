@@ -1,0 +1,194 @@
+---
+#Playbook name
+- name: Setting up the machine
+  hosts: gcloud_h2_testing
+  become: yes
+  become_method: sudo
+  #Seting some variable that we will be using later.
+  vars:
+    NODEJS_VERSION: "8"
+  #her we have a set of plays/tasks
+  tasks:
+    #TODO - Node is not needed with this repo we should correct anssible notebook
+    - name: Distribution
+      debug: msg="{{ ansible_distribution }}"
+    - name: Distribution version
+      debug: msg="{{ ansible_distribution_version}}"
+    - name: Distribution major version
+      debug: msg="{{ ansible_distribution_major_version }}"
+    - name: Distribution release
+      debug: msg="{{ ansible_distribution_release }}"
+
+
+    #Here we firstly update all packages before any installation takes place
+    - name: Updating all packages
+      ansible.builtin.apt:
+         update_cache: yes
+
+    - name: Running a manual command necessary for the next play
+      ansible.builtin.shell:
+        cmd: dpkg --configure -a
+
+    - name: Install prerequisites for Docker repository
+      ansible.builtin.apt:
+        name:
+          - apt-transport-https
+          - ca-certificates
+          - lsb-release
+          - gnupg
+        state: latest
+        update_cache: yes
+    #Adding Docker installation Tasks
+    - name: Add Docker GPG apt Key
+      ansible.builtin.apt_key:
+        url: https://download.docker.com/linux/ubuntu/gpg
+        state: present
+
+    - name: Add Docker Repository
+      ansible.builtin.apt_repository:
+        repo: deb https://download.docker.com/linux/ubuntu focal stable
+        state: present
+
+    - name: Update apt and install docker-ce
+      ansible.builtin.apt:
+        name: docker-ce
+        state: latest
+        update_cache: true
+
+    - name: Adding write permitions to docker socet
+      ansible.builtin.shell:
+        cmd: chmod 766 /var/run/docker.sock
+
+    ###Checking if we already have installed nvm###
+    - name: Get stats for the existance of nvm and node
+      ansible.builtin.stat:
+        path: /home/thanos.chourlias/.nvm
+      register: node
+
+    #Geting the installation script for the nvm from the web
+    - name: Installing nvm for node
+      ansible.builtin.get_url:
+        url: https://raw.githubusercontent.com/creationix/nvm/master/install.sh
+        dest: /etc/
+      when: node.stat.path is not defined
+
+    #In order to run the installation script we first check if the script exists in the location we saved it
+    - name: Get stats of the installation script
+      ansible.builtin.stat:
+        path: /etc/install.sh
+      register: sh
+
+    - name: Fixing permitions for the install executable to be able to run it
+      ansible.builtin.shell:
+        cmd: chmod 776 /etc/install.sh
+      when: node.stat.path is not defined
+
+    - name: Fail if script does not exist
+      ansible.builtin.fail:
+        msg: "Whoops the nvm installation file does not exist OR you did not set the right permissions"
+      when: sh.stat.path is not defined and sh.stat.executable == False
+
+    - name: Installing nvm
+      ansible.builtin.shell: /etc/install.sh
+      when: node.stat.path is not defined
+
+    - name: Downloading a stable version of node
+      ansible.builtin.shell: nvm install v18.0.0
+      when: node.stat.path is not defined
+
+    - name: Selecting the node version to use
+      ansible.builtin.shell: nvm use 18.0.0v
+      when: node.stat.path is not defined
+
+
+    ##TODO - Add a logic where you can print the version of the node running, the one below does not work propertly
+#    - name: restarting bash/sh
+#      ansible.builtin.shell: /bin/bash && source ~/.bashrc
+#      become: yes
+#      become_user: thanos.chourlias
+#      when: node.stat.path is defined
+#
+#    - name: Fetching the node version
+#      ansible.builtin.shell: node --version
+#      register: node_version
+#      when: node.stat.path is defined
+#
+#    - name: Printing the node version
+#      ansible.builtin.debug:
+#        var: node_version
+#      when: node.stat.path is defined
+
+    ###Final step in order for our machine to be ready for deployment is to clone the repos from github to the control Node###
+    - name: Ensure /var/www/html directory has correct permissions.
+      file:
+        path: /var/www/html
+        state: directory
+        owner: www-data
+        group: www-data
+
+    - name: Ensure .ssh directory exists.
+      file:
+        path: /var/www/.ssh
+        state: directory
+        mode: 0700
+        owner: www-data
+        group: www-data
+
+    # See: https://stackoverflow.com/a/37096534/100134
+    - name: Ensure setfacl support is present.
+      package: name=acl
+
+    - name: Create the projects directory if it doesnt exists and give the right permitions
+      ansible.builtin.file:
+        path: /home/thanos.chourlias/opt
+        state: directory
+        mode: '777'
+      become: yes
+
+    - name: Feching status about the client dir
+      ansible.builtin.stat:
+        path: "/home/thanos.chourlias/opt/pesonal-web-page-v3-client"
+      register: client_stat
+
+    - name: Create clients repo folder if it does not exist
+      ansible.builtin.file:
+        path: /home/thanos.chourlias/opt/pesonal-web-page-v3-client
+        state: directory
+        mode: '777'
+      become: yes
+      when: not client_stat.stat.exists
+
+    - name: Clone client repo
+      git:
+        repo: git@github.com:Athanasioschourlias/pesonal-web-page-v3-client.git
+        version: develop
+        dest: /home/thanos.chourlias/opt/pesonal-web-page-v3-client
+        clone: yes
+        accept_hostkey: yes
+        update: yes
+      become: no
+      when: not client_stat.stat.exists
+
+    - name: Feching status about the server dir
+      ansible.builtin.stat:
+        path: "/home/thanos.chourlias/opt/pesonal-web-page-v3-server"
+      register: server_stat
+
+    - name: Create servers repo folder if it does not exist
+      ansible.builtin.file:
+        path: /home/thanos.chourlias/opt/pesonal-web-page-v3-server
+        state: directory
+        mode: '777'
+      become: yes
+      when: not server_stat.stat.exists
+
+    - name: Clone server repo
+      git:
+        repo: git@github.com:Athanasioschourlias/pesonal-web-page-v3-server.git
+        version: develop
+        dest: /home/thanos.chourlias/opt/pesonal-web-page-v3-server
+        clone: yes
+        accept_hostkey: yes
+        update: yes
+      become: no
+      when: not server_stat.stat.exists
