@@ -1,0 +1,12 @@
+webserver:
+  hosts:
+    gcloud_h1:
+      ansible_host: 35.217.49.176
+      ansible_port: 22
+      ansible_ssh_user: thanos.chourlias
+      ansible_ssh_private_key_file: ~/.ssh/id_rsa.pub
+    gcloud_h2_testing:
+      ansible_host: 35.217.0.70
+      ansible_port: 22
+      ansible_ssh_user: thanos.chourlias
+      ansible_ssh_private_key_file: ~/.ssh/id_rsa.pub
