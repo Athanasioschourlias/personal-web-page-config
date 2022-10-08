@@ -1,0 +1,30 @@
+version: "3.9"
+
+volumes:
+  webpage-db-data:
+
+services:
+  page-db:
+    container_name: personal_web_page_dev_db
+    image: postgres
+    restart: always
+    environment:
+      POSTGRES_PASSWORD: securepwd #user postgres
+    volumes:
+      - webpage-db-data:/var/lib/postgresql/data
+      - ../assets/db/init.sql:/docker-entrypoint-initdb.d/init.sql
+    ports:
+      - "5432:5432"
+
+  page-server:
+    container_name: personal_webpage_dev_server
+    image: athanasioschourlias/webpage-server:0.0.1-dev #We are taking the images from the registry based on tags for the versioning
+    environment:
+      TOKEN_SECRET: "2r5u8x/A?D(G+KbPeSgVkYp3s6v9y$B&" #Default is 123
+      NODE_ENV: "production"
+    ports:
+      - "${EXPOSED_PORT}:${PORT}" #container port (PORT, from .env), assigned to given host port, the exposed from the dockerfile (EXPOSED_PORT)
+    depends_on:
+      - page-db
+    links:
+      - page-db
